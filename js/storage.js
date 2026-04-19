@@ -3,7 +3,7 @@
 // (단일 기기 로컬 전용. 동기화/큐/Realtime 없음)
 // =============================================
 
-const IDB_NAME    = 'ddog-cache';
+const IDB_NAME    = 'ddog-local';
 const IDB_VERSION = 1;
 const STORE_TODOS = 'todos';
 
