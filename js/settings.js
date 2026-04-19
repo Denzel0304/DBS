@@ -459,6 +459,7 @@ async function exportData() {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 
+    closeSettingsPanel();
     showToast('파일을 내보냈어요');
   } catch (e) {
     console.error('export 실패', e);
