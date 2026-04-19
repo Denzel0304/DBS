@@ -190,6 +190,15 @@
       <span class="settings-menu-label">통계</span>
       <span class="settings-menu-arrow">›</span>
     </button>
+    <button class="settings-menu-item" id="menu-export">
+      <span class="settings-menu-icon">📤</span>
+      <span class="settings-menu-label">파일 내보내기</span>
+    </button>
+    <button class="settings-menu-item" id="menu-import">
+      <span class="settings-menu-icon">📥</span>
+      <span class="settings-menu-label">파일 가져오기</span>
+    </button>
+    <input type="file" id="import-file-input" accept=".json,application/json" style="display:none" />
   </div>
 </div>
 
@@ -401,6 +410,33 @@
     <button class="rds-btn" id="repeat-edit-from">이 날짜 이후 모두 수정</button>
     <button class="rds-btn" id="repeat-edit-all">전체 수정</button>
     <button class="rds-btn cancel" id="repeat-edit-cancel">취소</button>
+  </div>
+</div>
+
+<!-- ===== 가져오기 확인 모달 ===== -->
+<div id="import-confirm-modal" class="hidden">
+  <div class="generic-modal-box">
+    <div class="generic-modal-title">파일 가져오기</div>
+    <div class="generic-modal-text">
+      기존의 모든 데이터를 삭제하고,<br>가져온 파일을 적용합니다.
+    </div>
+    <div class="generic-modal-btns">
+      <button class="generic-modal-btn cancel" id="import-confirm-cancel">취소</button>
+      <button class="generic-modal-btn danger" id="import-confirm-ok">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 형식 오류 안내 모달 ===== -->
+<div id="import-error-modal" class="hidden">
+  <div class="generic-modal-box">
+    <div class="generic-modal-title">파일 형식 오류</div>
+    <div class="generic-modal-text" id="import-error-text">
+      올바른 똑비서 백업 파일이 아닙니다.
+    </div>
+    <div class="generic-modal-btns">
+      <button class="generic-modal-btn confirm" id="import-error-ok">확인</button>
+    </div>
   </div>
 </div>
 
