@@ -1419,3 +1419,80 @@ body.theme-navy {
   --imp-2:          #806020;
   --imp-3:          #904030;
 }
+
+/* =============================================
+   범용 확인/안내 모달 (가져오기 확인, 형식 오류 등)
+   ============================================= */
+#import-confirm-modal,
+#import-error-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+#import-confirm-modal.hidden,
+#import-error-modal.hidden { display: none; }
+
+.generic-modal-box {
+  background: var(--bg-elevated);
+  border-radius: 16px;
+  padding: 26px 22px 18px;
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  font-family: var(--font-main);
+  animation: slideUp 0.2s ease;
+}
+
+.generic-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.generic-modal-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-align: center;
+  line-height: 1.55;
+}
+
+.generic-modal-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.generic-modal-btn {
+  flex: 1;
+  padding: 11px 0;
+  border-radius: 10px;
+  border: none;
+  font-size: 15px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s, background 0.15s;
+}
+.generic-modal-btn:active { opacity: 0.8; }
+
+.generic-modal-btn.cancel {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.generic-modal-btn.confirm {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.generic-modal-btn.danger {
+  background: var(--danger);
+  color: #fff;
+  font-weight: 600;
+}
