@@ -104,12 +104,29 @@ function hasOpenPopup() {
   if (!document.getElementById('modal-overlay').classList.contains('hidden')) return true;
   if (!document.getElementById('checklist-overlay').classList.contains('hidden')) return true;
   if (!document.getElementById('repeat-edit-overlay').classList.contains('hidden')) return true;
+  const importConfirm = document.getElementById('import-confirm-modal');
+  if (importConfirm && !importConfirm.classList.contains('hidden')) return true;
+  const importError = document.getElementById('import-error-modal');
+  if (importError && !importError.classList.contains('hidden')) return true;
   if (document.getElementById('repeats-panel').classList.contains('open')) return true;
   if (document.getElementById('settings-panel').classList.contains('open')) return true;
   return false;
 }
 
 function closeTopPopup() {
+  // import 모달은 다른 모달들 위에 떠 있으므로 가장 먼저 처리
+  const importError = document.getElementById('import-error-modal');
+  if (importError && !importError.classList.contains('hidden')) {
+    importError.classList.add('hidden');
+    return;
+  }
+  const importConfirm = document.getElementById('import-confirm-modal');
+  if (importConfirm && !importConfirm.classList.contains('hidden')) {
+    if (typeof cancelImport === 'function') cancelImport();
+    else importConfirm.classList.add('hidden');
+    return;
+  }
+
   const statsOverlay = document.getElementById('stats-overlay');
   if (statsOverlay) { statsOverlay.remove(); return; }
   const themeSheet = document.getElementById('theme-sheet');

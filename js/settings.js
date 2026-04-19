@@ -228,6 +228,29 @@ function initSettings() {
   const menuStats = document.getElementById('menu-stats');
   if (menuStats) menuStats.addEventListener('click', () => { closeSettingsPanel(); setTimeout(openStatsModal, 350); });
   document.getElementById('repeats-back').addEventListener('click', closeRepeatsPanel);
+
+  // 내보내기 / 가져오기
+  const menuExport = document.getElementById('menu-export');
+  if (menuExport) menuExport.addEventListener('click', exportData);
+
+  const menuImport = document.getElementById('menu-import');
+  const importInput = document.getElementById('import-file-input');
+  if (menuImport && importInput) {
+    menuImport.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', handleImportFileSelected);
+  }
+
+  // 가져오기 확인 모달 버튼
+  const importOk = document.getElementById('import-confirm-ok');
+  const importCancel = document.getElementById('import-confirm-cancel');
+  if (importOk) importOk.addEventListener('click', confirmImport);
+  if (importCancel) importCancel.addEventListener('click', cancelImport);
+
+  // 형식 오류 안내 모달 버튼
+  const errOk = document.getElementById('import-error-ok');
+  if (errOk) errOk.addEventListener('click', () => {
+    document.getElementById('import-error-modal').classList.add('hidden');
+  });
 }
 
 function openSettingsPanel() {
@@ -384,4 +407,140 @@ function showRepeatDeleteOptions(todo, el) {
   el.appendChild(opts);
   // 최하단 아이템의 경우 삭제 옵션이 잘리지 않도록 스크롤
   setTimeout(() => opts.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+}
+
+// =============================================
+// 파일 내보내기 / 가져오기
+// =============================================
+
+const BACKUP_APP_KEY     = 'ddog-local';
+const BACKUP_VERSION     = 1;
+
+// 백업에 포함할 localStorage 키 화이트리스트
+const BACKUP_LS_KEYS = ['app-theme', 'lightmode'];
+
+// ── 내보내기 ──
+async function exportData() {
+  try {
+    const todos = await idbGetAll();
+
+    const settings = {};
+    BACKUP_LS_KEYS.forEach(k => {
+      const v = localStorage.getItem(k);
+      if (v !== null) settings[k] = v;
+    });
+
+    const payload = {
+      app:         BACKUP_APP_KEY,
+      version:     BACKUP_VERSION,
+      exported_at: new Date().toISOString(),
+      todos:       todos,
+      settings:    settings,
+    };
+
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+
+    // 파일명: ddog-local_YYYY-MM-DD_HHMM.json
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm   = String(now.getMonth() + 1).padStart(2, '0');
+    const dd   = String(now.getDate()).padStart(2, '0');
+    const hh   = String(now.getHours()).padStart(2, '0');
+    const mi   = String(now.getMinutes()).padStart(2, '0');
+    const filename = `ddog-local_${yyyy}-${mm}-${dd}_${hh}${mi}.json`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    showToast('파일을 내보냈어요');
+  } catch (e) {
+    console.error('export 실패', e);
+    showToast('내보내기 실패');
+  }
+}
+
+// ── 가져오기: 파일 선택 → 검증 → 확인 모달 ──
+let _pendingImportData = null; // 검증 통과한 가져오기 데이터 임시 보관
+
+function handleImportFileSelected(e) {
+  const file = e.target.files && e.target.files[0];
+  // 같은 파일을 다시 선택해도 change 이벤트가 발생하도록 input 값 리셋
+  e.target.value = '';
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = ev => {
+    let parsed;
+    try {
+      parsed = JSON.parse(ev.target.result);
+    } catch (err) {
+      showImportError('JSON 형식이 올바르지 않습니다.');
+      return;
+    }
+
+    // 시그니처 검증
+    if (!parsed || typeof parsed !== 'object' || parsed.app !== BACKUP_APP_KEY) {
+      showImportError('올바른 똑비서 백업 파일이 아닙니다.');
+      return;
+    }
+    if (!Array.isArray(parsed.todos)) {
+      showImportError('백업 파일에 데이터가 없습니다.');
+      return;
+    }
+
+    // 검증 통과 → 확인 모달
+    _pendingImportData = parsed;
+    document.getElementById('import-confirm-modal').classList.remove('hidden');
+  };
+  reader.onerror = () => showImportError('파일을 읽을 수 없습니다.');
+  reader.readAsText(file);
+}
+
+function showImportError(msg) {
+  const textEl = document.getElementById('import-error-text');
+  if (textEl) textEl.textContent = msg;
+  document.getElementById('import-error-modal').classList.remove('hidden');
+}
+
+function cancelImport() {
+  _pendingImportData = null;
+  document.getElementById('import-confirm-modal').classList.add('hidden');
+}
+
+async function confirmImport() {
+  const data = _pendingImportData;
+  _pendingImportData = null;
+  document.getElementById('import-confirm-modal').classList.add('hidden');
+
+  if (!data) return;
+
+  try {
+    // 1. IDB 완전 초기화 후 가져온 데이터 일괄 저장
+    await idbClear();
+    if (data.todos.length > 0) {
+      await idbPutMany(data.todos);
+    }
+
+    // 2. localStorage 설정 복원 (화이트리스트만)
+    if (data.settings && typeof data.settings === 'object') {
+      BACKUP_LS_KEYS.forEach(k => {
+        if (Object.prototype.hasOwnProperty.call(data.settings, k)) {
+          localStorage.setItem(k, data.settings[k]);
+        }
+      });
+    }
+
+    // 3. 새로고침
+    location.reload();
+  } catch (e) {
+    console.error('import 실패', e);
+    showImportError('가져오기 중 오류가 발생했습니다.');
+  }
 }
