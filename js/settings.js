@@ -251,6 +251,17 @@ function initSettings() {
   if (errOk) errOk.addEventListener('click', () => {
     document.getElementById('import-error-modal').classList.add('hidden');
   });
+
+  // 개발자의 말
+  const menuDevNote = document.getElementById('menu-dev-note');
+  if (menuDevNote) menuDevNote.addEventListener('click', () => {
+    closeSettingsPanel();
+    setTimeout(openDevNoteModal, 350);
+  });
+  const devNoteOk = document.getElementById('dev-note-ok');
+  if (devNoteOk) devNoteOk.addEventListener('click', () => {
+    document.getElementById('dev-note-modal').classList.add('hidden');
+  });
 }
 
 function openSettingsPanel() {
@@ -544,4 +555,8 @@ async function confirmImport() {
     console.error('import 실패', e);
     showImportError('가져오기 중 오류가 발생했습니다.');
   }
+}
+
+function openDevNoteModal() {
+  document.getElementById('dev-note-modal').classList.remove('hidden');
 }
