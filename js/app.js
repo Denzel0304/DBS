@@ -110,6 +110,8 @@ function hasOpenPopup() {
   if (importError && !importError.classList.contains('hidden')) return true;
   if (document.getElementById('repeats-panel').classList.contains('open')) return true;
   if (document.getElementById('settings-panel').classList.contains('open')) return true;
+  const devNote = document.getElementById('dev-note-modal');
+  if (devNote && !devNote.classList.contains('hidden')) return true;
   return false;
 }
 
@@ -118,6 +120,11 @@ function closeTopPopup() {
   const importError = document.getElementById('import-error-modal');
   if (importError && !importError.classList.contains('hidden')) {
     importError.classList.add('hidden');
+    return;
+  }
+  const devNote = document.getElementById('dev-note-modal');
+  if (devNote && !devNote.classList.contains('hidden')) {
+    devNote.classList.add('hidden');
     return;
   }
   const importConfirm = document.getElementById('import-confirm-modal');
