@@ -1424,7 +1424,8 @@ body.theme-navy {
    범용 확인/안내 모달 (가져오기 확인, 형식 오류 등)
    ============================================= */
 #import-confirm-modal,
-#import-error-modal {
+#import-error-modal,
+#dev-note-modal {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
@@ -1435,7 +1436,8 @@ body.theme-navy {
   padding: 20px;
 }
 #import-confirm-modal.hidden,
-#import-error-modal.hidden { display: none; }
+#import-error-modal.hidden,
+#dev-note-modal.hidden { display: none; }
 
 .generic-modal-box {
   background: var(--bg-elevated);
