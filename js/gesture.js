@@ -32,39 +32,34 @@ function initGesturePopup() {
     } catch(e) { showToast('오류가 발생했어요'); }
   });
 
+  // "🗓 날짜 선택" 버튼: input이 위에 투명하게 덮여있어 사용자 탭은 보통 input에 도달.
+  // 이 핸들러는 input이 어떤 이유로 가려졌을 때를 위한 fallback.
   document.getElementById('action-pick-date').addEventListener('click', () => {
-    const fromWeekly = actionFromWeekly;
     const picker = document.getElementById('action-date-picker');
-    picker.value = actionTargetDate || AppState.selectedDate;
-
-    picker.addEventListener('change', async function onPick() {
-      picker.removeEventListener('change', onPick);
-      if (!picker.value || !actionTargetId) return;
-      try {
-        await moveTodoDate(actionTargetId, picker.value);
-        closeActionPopup();
-        showToast('날짜를 변경했어요');
-        if (fromWeekly) {
-          await loadWeekly();
-        } else {
-          await loadTodos();
-          updateMonthDots();
-        }
-      } catch(e) { showToast('오류가 발생했어요'); }
-    });
-
-    // iOS Safari 호환: showPicker() → click() → focus() 순으로 fallback
-    // (안드로이드/PC Chrome은 showPicker로 정상 진입하므로 기존과 동일하게 동작)
     try {
-      if (typeof picker.showPicker === 'function') {
-        picker.showPicker();
-      } else {
-        picker.click();
-      }
-    } catch (e) {
+      if (typeof picker.showPicker === 'function') picker.showPicker();
+      else picker.click();
+    } catch(e) {
       try { picker.click(); } catch(_) {}
-      try { picker.focus(); } catch(_) {}
     }
+  });
+
+  // 날짜 picker change 이벤트는 초기화 시 한 번만 등록 (중복 등록 방지)
+  document.getElementById('action-date-picker').addEventListener('change', async function() {
+    const picker = this;
+    const fromWeekly = actionFromWeekly;
+    if (!picker.value || !actionTargetId) return;
+    try {
+      await moveTodoDate(actionTargetId, picker.value);
+      closeActionPopup();
+      showToast('날짜를 변경했어요');
+      if (fromWeekly) {
+        await loadWeekly();
+      } else {
+        await loadTodos();
+        updateMonthDots();
+      }
+    } catch(e) { showToast('오류가 발생했어요'); }
   });
 
   document.getElementById('action-delete').addEventListener('click', async () => {
@@ -105,6 +100,9 @@ function openActionPopup(id, fromWeekly = false, targetDate = null, todo = null)
   actionTargetTodo = todo;
   actionFromWeekly = fromWeekly;
   actionTargetDate = targetDate || AppState.selectedDate;
+  // 사용자가 탭하는 순간 input이 직접 picker를 띄우므로, 값은 미리 세팅
+  const picker = document.getElementById('action-date-picker');
+  if (picker) picker.value = actionTargetDate;
   document.getElementById('action-popup').classList.remove('hidden');
 }
 
