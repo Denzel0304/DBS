@@ -288,7 +288,8 @@ ul { list-style: none; }
 .action-btn:hover { background: var(--bg-hover); }
 .action-btn.danger { color: var(--danger); }
 
-/* 날짜 피커: 모바일/PC 모두 화면 표시 없이 피커만 열기 위한 숨김 처리 */
+/* 날짜 피커: 모바일/PC 모두 화면 표시 없이 피커만 열기 위한 숨김 처리
+   ※ iOS Safari 호환을 위해 pointer-events: none 제거 (안드로이드/PC 동작 영향 없음) */
 #action-date-picker {
   position: absolute;
   left: 50%;
@@ -300,7 +301,6 @@ ul { list-style: none; }
   overflow: hidden;
   border: none;
   padding: 0;
-  pointer-events: none;
 }
 
 /* ── 년도/월 팝업 ── */
