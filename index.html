@@ -354,9 +354,11 @@
 <!-- ===== 액션 팝업 ===== -->
 <div id="action-popup" class="hidden">
   <div id="action-box">
-    <input type="date" id="action-date-picker" />
     <button class="action-btn" id="action-tomorrow">📅 1일 뒤</button>
-    <button class="action-btn" id="action-pick-date">🗓 날짜 선택</button>
+    <div class="action-pick-wrap">
+      <button class="action-btn" id="action-pick-date">🗓 날짜 선택</button>
+      <input type="date" id="action-date-picker" />
+    </div>
     <button class="action-btn danger" id="action-delete">🗑 삭제</button>
   </div>
 </div>
