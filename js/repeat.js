@@ -37,11 +37,6 @@ function initRepeat() {
     btn.addEventListener('click', () => btn.classList.toggle('active'));
   });
 
-  // 커스텀 요일 버튼
-  document.querySelectorAll('#repeat-custom-day-btns .rday-btn').forEach(btn => {
-    btn.addEventListener('click', () => btn.classList.toggle('active'));
-  });
-
   // 매월 모드 버튼
   document.querySelectorAll('.rmonth-mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -75,9 +70,6 @@ function openRepeatModal() {
   document.querySelectorAll('#repeat-weekday-btns .rday-btn').forEach(btn => {
     btn.classList.toggle('active', repeatConfig.weekdays.includes(parseInt(btn.dataset.d)));
   });
-  document.querySelectorAll('#repeat-custom-day-btns .rday-btn').forEach(btn => {
-    btn.classList.toggle('active', repeatConfig.customDays.includes(parseInt(btn.dataset.d)));
-  });
 
   selectRepeatType(repeatConfig.type || 'none');
   document.getElementById('repeat-overlay').classList.remove('hidden');
@@ -99,8 +91,6 @@ function selectRepeatType(type) {
   if (type === 'weekly')  document.getElementById('repeat-weekly-wrap').classList.remove('hidden');
   if (type === 'monthly') document.getElementById('repeat-monthly-wrap').classList.remove('hidden');
   if (type === 'yearly')  document.getElementById('repeat-yearly-wrap').classList.remove('hidden');
-  if (type === 'custom')  document.getElementById('repeat-custom-wrap').classList.remove('hidden');
-
   repeatConfig.type = type;
 }
 
@@ -140,12 +130,6 @@ function confirmRepeat() {
     repeatConfig.yearlyDay = val;
   }
 
-  if (type === 'custom') {
-    repeatConfig.customDays = [...document.querySelectorAll('#repeat-custom-day-btns .rday-btn.active')]
-      .map(b => parseInt(b.dataset.d));
-    if (!repeatConfig.customDays.length) { showToast('요일을 선택해주세요'); return; }
-  }
-
   if (document.getElementById('repeat-end-toggle').checked) {
     repeatConfig.endDate = document.getElementById('repeat-end-date').value || null;
   } else {
@@ -183,10 +167,6 @@ function getRepeatLabel() {
       }
       return `매월 ${repeatConfig.monthDay}일`;
     case 'yearly':  return `매년 ${repeatConfig.yearlyMonth}/${repeatConfig.yearlyDay}`;
-    case 'custom': {
-      const days = ['일','월','화','수','목','금','토'];
-      return '매주 ' + repeatConfig.customDays.map(d => days[d]).join(',');
-    }
     default: return '';
   }
 }
@@ -287,10 +267,6 @@ function isRepeatMatch(todo, dateStr) {
       const ym = meta.yearlyMonth || 1;
       const yd = meta.yearlyDay || 1;
       return (target.getMonth() + 1) === ym && target.getDate() === yd;
-    }
-    case 'custom': {
-      const customDays = meta.customDays || [];
-      return customDays.includes(targetDow);
     }
     default:
       return false;
