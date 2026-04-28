@@ -36,7 +36,7 @@ function initGesturePopup() {
     const fromWeekly = actionFromWeekly;
     const picker = document.getElementById('action-date-picker');
     picker.value = actionTargetDate || AppState.selectedDate;
-    picker.showPicker?.();
+
     picker.addEventListener('change', async function onPick() {
       picker.removeEventListener('change', onPick);
       if (!picker.value || !actionTargetId) return;
@@ -52,6 +52,19 @@ function initGesturePopup() {
         }
       } catch(e) { showToast('오류가 발생했어요'); }
     });
+
+    // iOS Safari 호환: showPicker() → click() → focus() 순으로 fallback
+    // (안드로이드/PC Chrome은 showPicker로 정상 진입하므로 기존과 동일하게 동작)
+    try {
+      if (typeof picker.showPicker === 'function') {
+        picker.showPicker();
+      } else {
+        picker.click();
+      }
+    } catch (e) {
+      try { picker.click(); } catch(_) {}
+      try { picker.focus(); } catch(_) {}
+    }
   });
 
   document.getElementById('action-delete').addEventListener('click', async () => {
