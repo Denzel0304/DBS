@@ -35,24 +35,31 @@
       0%, 100% { opacity: 1; transform: scale(1); }
       50%       { opacity: 0.75; transform: scale(0.96); }
     }
+
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 <script>
   // 스플래시 전에 라이트 모드 복원 (깜빡임 방지)
-  if (localStorage.getItem('lightmode') === '1') {
+  if (localStorage.getItem('zq7k39xr_lightmode') === '1') {
     document.body.classList.add('light-mode');
   }
 </script>
 
-<!-- ===== 스플래시 화면 (앱 로딩 중 표시) ===== -->
+<!-- ===== 스플래시 화면 (항상 먼저 표시) ===== -->
 <div id="splash-screen">
-  <img id="splash-logo" src="logo.png" alt="똑비서" />
+  <img id="splash-logo" src="logo2.png" alt="똑비서" />
   <script>
-    if (localStorage.getItem('lightmode') === '1') {
-      document.getElementById('splash-logo').src = 'logo1.png';
-    }
+    (function () {
+      // 저장된 테마를 스플래시 표시 전에 미리 적용 (배경색은 style.css의 테마별 규칙 사용)
+      var LEGACY = { sage: 'light', navy: 'dark' };
+      var COLORS = ['sky', 'rose', 'lavender', 'cream', 'apricot', 'mint', 'mocha', 'gray'];
+      var t = localStorage.getItem('zq7k39xr_app-theme') || (localStorage.getItem('zq7k39xr_lightmode') === '1' ? 'light' : 'dark');
+      if (LEGACY[t]) t = LEGACY[t];
+      if (t === 'light') document.body.classList.add('light-mode');
+      else if (COLORS.indexOf(t) !== -1) document.body.classList.add('theme-' + t, 'theme-active');
+    })();
   </script>
 </div>
 
@@ -77,7 +84,7 @@
       <div id="calendar-grid"></div>
     </div>
     <div id="selected-date-bar">
-      <span id="selected-date-label"></span><span id="weather-display" style="margin-left:10px;font-size:13px;color:var(--text-secondary);white-space:nowrap;"></span>
+      <div id="date-label-wrap"><span id="selected-date-label"></span><span id="lunar-date-label"></span></div>
       <div id="date-bar-actions" style="visibility:hidden">
         <button id="lightmode-toggle" title="라이트/다크 모드 전환">
           <div class="lm-toggle-track"><div class="lm-toggle-thumb"></div></div>
@@ -116,6 +123,18 @@
     </div>
   </div>
 
+  <!-- ===== 창고 탭 ===== -->
+  <div id="tab-storage" class="tab-content">
+    <div id="storage-header">
+      <span id="storage-header-date"></span>
+      <span id="storage-header-title">곧 할 일들</span>
+      <button id="storage-fab-add" title="할일 추가">＋</button>
+    </div>
+    <div id="storage-list-section">
+      <div id="storage-todo-list"></div>
+    </div>
+  </div>
+
   <!-- ===== 검색 탭 ===== -->
   <div id="tab-search" class="tab-content">
     <div id="search-container">
@@ -149,6 +168,14 @@
       </svg>
       <span>주간</span>
     </button>
+    <button class="nav-btn" data-tab="storage" id="nav-storage">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 8l2-4h14l2 4"/>
+        <rect x="3" y="8" width="18" height="12" rx="1"/>
+        <line x1="9" y1="13" x2="15" y2="13"/>
+      </svg>
+      <span>창고</span>
+    </button>
     <button class="nav-btn" data-tab="search" id="nav-search">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="11" cy="11" r="8"/>
@@ -175,6 +202,21 @@
     <button id="settings-close">✕</button>
   </div>
   <div id="settings-menu">
+    <button class="settings-menu-item" id="menu-habits">
+      <span class="settings-menu-icon">✅</span>
+      <span class="settings-menu-label">습관 트래커</span>
+      <span class="settings-menu-arrow">›</span>
+    </button>
+    <button class="settings-menu-item" id="menu-dday">
+      <span class="settings-menu-icon">⏳</span>
+      <span class="settings-menu-label">디데이</span>
+      <span class="settings-menu-arrow">›</span>
+    </button>
+    <button class="settings-menu-item" id="menu-bucket">
+      <span class="settings-menu-icon">🪣</span>
+      <span class="settings-menu-label">버킷 리스트</span>
+      <span class="settings-menu-arrow">›</span>
+    </button>
     <button class="settings-menu-item" id="menu-repeats">
       <span class="settings-menu-icon">🔁</span>
       <span class="settings-menu-label">반복함</span>
@@ -190,18 +232,15 @@
       <span class="settings-menu-label">통계</span>
       <span class="settings-menu-arrow">›</span>
     </button>
-    <button class="settings-menu-item" id="menu-export">
-      <span class="settings-menu-icon">📤</span>
-      <span class="settings-menu-label">파일 내보내기</span>
+    <button class="settings-menu-item" id="menu-backup-export">
+      <span class="settings-menu-icon">💾</span>
+      <span class="settings-menu-label">백업 내보내기</span>
+      <span class="settings-menu-arrow">›</span>
     </button>
-    <button class="settings-menu-item" id="menu-import">
-      <span class="settings-menu-icon">📥</span>
-      <span class="settings-menu-label">파일 가져오기</span>
-    </button>
-    <input type="file" id="import-file-input" accept=".json,application/json" style="display:none" />
-    <button class="settings-menu-item" id="menu-dev-note">
-      <span class="settings-menu-icon">💬</span>
-      <span class="settings-menu-label">개발자의 말</span>
+    <button class="settings-menu-item" id="menu-backup-import">
+      <span class="settings-menu-icon">📂</span>
+      <span class="settings-menu-label">백업 불러오기</span>
+      <span class="settings-menu-arrow">›</span>
     </button>
   </div>
 </div>
@@ -223,7 +262,7 @@
       <button id="modal-close">✕</button>
     </div>
     <div id="modal-title-row">
-      <input type="text" id="input-title" placeholder="할일을 입력하세요..." autocomplete="off" />
+      <input type="text" id="input-title" size="1" placeholder="할일을 입력하세요..." autocomplete="off" />
       <label id="detail-toggle-label">
         <input type="checkbox" id="detail-toggle" />
         <span>상세</span>
@@ -238,14 +277,20 @@
           <button class="imp-btn" data-val="2">보통</button>
           <button class="imp-btn" data-val="3">높음</button>
         </div>
-        <label id="weekly-flag-label">
-          <input type="checkbox" id="input-weekly-flag" />
-          <span>주간</span>
-        </label>
+        <div id="flags-column">
+          <label id="weekly-flag-label">
+            <input type="checkbox" id="input-weekly-flag" />
+            <span>주간</span>
+          </label>
+          <label id="storage-flag-label">
+            <input type="checkbox" id="storage-flag-toggle" />
+            <span>창고</span>
+          </label>
+        </div>
       </div>
       <div class="detail-row">
         <label class="detail-label">메모</label>
-        <textarea id="input-memo" placeholder="메모 (선택사항)"></textarea>
+        <textarea id="input-memo" cols="1" placeholder="메모 (선택사항)"></textarea>
       </div>
       <div class="detail-row">
         <label class="detail-label">날짜</label>
@@ -256,11 +301,22 @@
         <input type="number" id="input-remind" placeholder="0" min="0" max="30" value="0" />
         <span class="detail-unit">일 전</span>
         <button id="repeat-btn" class="repeat-btn" title="반복 설정">🔁 반복</button>
-        <label id="checklist-toggle-label">
-          <input type="checkbox" id="checklist-toggle" />
-          <span>리스트</span>
-        </label>
-        <button id="checklist-open-btn" class="checklist-open-btn hidden" title="체크리스트 편집">☑ 리스트</button>
+        <div id="remind-flags-column">
+          <div class="remind-flag-slot">
+            <label id="checklist-toggle-label">
+              <input type="checkbox" id="checklist-toggle" />
+              <span>리스트</span>
+            </label>
+            <button id="checklist-open-btn" class="checklist-open-btn hidden" title="체크리스트 편집">☑ 리스트</button>
+          </div>
+          <div class="remind-flag-slot">
+            <label id="time-toggle-label">
+              <input type="checkbox" id="time-toggle" />
+              <span>시간</span>
+            </label>
+            <button id="time-open-btn" class="time-open-btn hidden" title="시간 편집">🕒 시간</button>
+          </div>
+        </div>
       </div>
     </div>
     <button id="modal-save">저장</button>
@@ -280,6 +336,7 @@
       <button class="rtype-btn" data-type="weekly">매주</button>
       <button class="rtype-btn" data-type="monthly">매월</button>
       <button class="rtype-btn" data-type="yearly">매년</button>
+      <button class="rtype-btn" data-type="custom">커스텀</button>
     </div>
     <div id="repeat-weekly-wrap" class="repeat-detail hidden">
       <label class="repeat-sub-label">요일 선택</label>
@@ -314,7 +371,7 @@
     </div>
     <div id="repeat-yearly-wrap" class="repeat-detail hidden">
       <div class="repeat-option">
-        <label>매년</label>
+        <label id="repeat-yearly-label">매년</label>
         <select id="repeat-yearly-month">
           <option value="1">1월</option><option value="2">2월</option><option value="3">3월</option>
           <option value="4">4월</option><option value="5">5월</option><option value="6">6월</option>
@@ -323,6 +380,23 @@
         </select>
         <input type="number" id="repeat-yearly-day" min="1" max="31" placeholder="1" />
         <span>일</span>
+      </div>
+      <div class="repeat-option" style="gap:16px;">
+        <label class="repeat-end-label"><input type="checkbox" id="repeat-yearly-lunar" /><span>음력</span></label>
+        <label class="repeat-end-label"><input type="checkbox" id="repeat-yearly-birthday" /><span>생일</span></label>
+      </div>
+    </div>
+    <div id="repeat-custom-wrap" class="repeat-detail hidden">
+      <div id="repeat-custom-unit-row" style="margin-bottom:10px;">
+        <button class="rmonth-mode-btn rcustom-unit-btn active" data-unit="day">일</button>
+        <button class="rmonth-mode-btn rcustom-unit-btn" data-unit="week">주</button>
+        <button class="rmonth-mode-btn rcustom-unit-btn" data-unit="month">개월</button>
+        <button class="rmonth-mode-btn rcustom-unit-btn" data-unit="year">년</button>
+      </div>
+      <div class="repeat-option">
+        <label>매</label>
+        <input type="number" id="repeat-custom-interval" min="2" max="999" placeholder="2" />
+        <span id="repeat-custom-unit-label">일마다</span>
       </div>
     </div>
     <div class="repeat-option">
@@ -344,11 +418,9 @@
 <!-- ===== 액션 팝업 ===== -->
 <div id="action-popup" class="hidden">
   <div id="action-box">
+    <input type="date" id="action-date-picker" />
     <button class="action-btn" id="action-tomorrow">📅 1일 뒤</button>
-    <div class="action-pick-wrap">
-      <button class="action-btn" id="action-pick-date">🗓 날짜 선택</button>
-      <input type="date" id="action-date-picker" />
-    </div>
+    <button class="action-btn" id="action-pick-date">🗓 날짜 선택</button>
     <button class="action-btn danger" id="action-delete">🗑 삭제</button>
   </div>
 </div>
@@ -388,12 +460,33 @@
     </div>
     <div id="checklist-items"></div>
     <div id="checklist-add-row">
-      <input type="text" id="checklist-input" placeholder="" autocomplete="off" />
+      <input type="text" id="checklist-input" size="1" placeholder="" autocomplete="off" />
       <button id="checklist-add-btn">＋</button>
     </div>
     <div id="checklist-footer">
       <button id="checklist-cancel-btn" class="checklist-footer-btn cancel">취소</button>
       <button id="checklist-confirm-btn" class="checklist-footer-btn confirm">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 시간 설정 모달 ===== -->
+<div id="time-overlay" class="hidden">
+  <div id="time-box">
+    <div id="time-header">
+      <span>시간 설정</span>
+      <button id="time-modal-close">✕</button>
+    </div>
+    <div id="time-select-row">
+      <select id="time-hour"></select>
+      <span class="time-unit">시</span>
+      <select id="time-minute"></select>
+      <span class="time-unit">분</span>
+    </div>
+    <div id="time-footer">
+      <button id="time-delete-btn" class="time-footer-btn delete hidden">삭제</button>
+      <button id="time-cancel-btn" class="time-footer-btn cancel">취소</button>
+      <button id="time-confirm-btn" class="time-footer-btn confirm">확인</button>
     </div>
   </div>
 </div>
@@ -409,76 +502,21 @@
   </div>
 </div>
 
-<!-- ===== 가져오기 확인 모달 ===== -->
-<div id="import-confirm-modal" class="hidden">
-  <div class="generic-modal-box">
-    <div class="generic-modal-title">파일 가져오기</div>
-    <div class="generic-modal-text">
-      기존의 모든 데이터를 삭제하고,<br>가져온 파일을 적용합니다.
-    </div>
-    <div class="generic-modal-btns">
-      <button class="generic-modal-btn cancel" id="import-confirm-cancel">취소</button>
-      <button class="generic-modal-btn danger" id="import-confirm-ok">확인</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== 형식 오류 안내 모달 ===== -->
-<div id="import-error-modal" class="hidden">
-  <div class="generic-modal-box">
-    <div class="generic-modal-title">파일 형식 오류</div>
-    <div class="generic-modal-text" id="import-error-text">
-      올바른 똑비서 백업 파일이 아닙니다.
-    </div>
-    <div class="generic-modal-btns">
-      <button class="generic-modal-btn confirm" id="import-error-ok">확인</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== 개발자의 말 모달 ===== -->
-<div id="dev-note-modal" class="hidden">
-  <div class="generic-modal-box">
-    <div class="generic-modal-title">💬 개발자의 말</div>
-    <div class="generic-modal-text" style="line-height:1.8;text-align:left;word-break:keep-all;">
-      '똑비서'는 다년간 여러 일정관리앱을 쓰면서 느꼈던 불편함이나 단점들을 모두 보완하여,
-      개인적으로 사용하고자 만든 앱입니다.<br><br>
-      여러분의 일정관리에 큰 도움이 되면 좋겠습니다.<br><br>
-      서버가 아닌 개별 기기에 저장되는 방식이므로, 캐시를 삭제하거나 기기를 바꾸면
-      모든 정보는 사라집니다. 반드시 <strong style="color:#e05c6a;">'파일 내보내기'</strong>를 통해 저장해두시기 바랍니다.<br><br>
-      <span style="color:var(--text-muted);font-size:13px;">개발자 : snipes79@naver.com</span>
-    </div>
-    <div class="generic-modal-btns">
-      <button class="generic-modal-btn confirm" id="dev-note-ok">확인</button>
-    </div>
-  </div>
-</div>
-
-<!--
-  스크립트 로딩 순서 (의존성 기준):
-    1. config.js   — AppState, newId(), 날짜 유틸, 토스트
-    2. storage.js  — IndexedDB 헬퍼
-    3. repeat.js   — isRepeatMatch() 정의 (db.js가 사용)
-    4. db.js       — config + storage + isRepeatMatch 의존
-    5. 그 외 UI 모듈 — 위 4개에 의존
-    6. app.js      — 모든 init 호출 (마지막)
--->
 <script src="js/config.js"></script>
-<script src="js/storage.js"></script>
-<script src="js/repeat.js"></script>
 <script src="js/db.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/lunar.min.js"></script>
 <script src="js/calendar.js"></script>
+<script src="js/repeat.js"></script>
 <script src="js/modal.js"></script>
 <script src="js/gesture.js"></script>
 <script src="js/todo.js"></script>
 <script src="js/search.js"></script>
 <script src="js/weekly.js"></script>
+<script src="js/storage.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/sound.js"></script>
 <script src="js/app.js"></script>
-
-<!-- 사용 로그 (자가 실행, 본 앱과 분리) -->
-<script src="js/analytics.js"></script>
 
 <script>
 /* ── 메모 URL 링크 미리보기 ── */
@@ -519,20 +557,13 @@ function updateMemoLinks() {
   });
 }
 
-/* 모달 열릴 때 링크 감지 + 넘버링 들여쓰기 복원 */
+/* 모달 열릴 때 링크 감지 */
 (function() {
   const _orig = window.openEditModal;
   if (_orig) {
     window.openEditModal = function(todo) {
       _orig(todo);
-      setTimeout(() => {
-        updateMemoLinks();
-        // trim()으로 사라진 1번 항목 들여쓰기 복원
-        const memo = document.getElementById('input-memo');
-        if (memo && /^\d+\. /.test(memo.value) && /\n {4}\d+\. /.test(memo.value)) {
-          memo.value = '    ' + memo.value;
-        }
-      }, 60);
+      setTimeout(() => { updateMemoLinks(); }, 60);
     };
   }
 })();
@@ -554,106 +585,247 @@ document.addEventListener('input', e => {
   }
 })();
 
-/* ── 메모 자동 번호 리스트 (input 이벤트 — 모바일/PC 공통) ── */
+/* ── 메모 자동 번호 리스트 — aimemo 방식 (keydown + beforeinput + input) ── */
 (function() {
-  let _prevVal = '';
-  document.addEventListener('input', function(e) {
-    const el = e.target;
-    if (el.id !== 'input-memo') return;
+  const ta = document.getElementById('input-memo');
+  if (!ta) return;
+  let mode = null; // null | 'bullet' | 'number'
 
-    const val = el.value;
-    const pos = el.selectionStart;
-    const lineStart = val.lastIndexOf('\n', pos - 1) + 1;
-    const lineText  = val.substring(lineStart, pos);
+  // ZWS(zero-width space): Android IME가 번호 prefix의 숫자를 조합 버퍼로 잡는 것을 방지
+  const ZWS = '\u200b';
 
-    // 1. "숫자. " 입력 감지 → 들여쓰기 + 번호 변환
-    const triggerMatch = lineText.match(/^(\d+)\. $/);
-    if (triggerMatch) {
-      const num = parseInt(triggerMatch[1]);
-      const newLine = '    ' + num + '. ';
-      const before = val.substring(0, lineStart);
-      const after  = val.substring(pos);
-      el.value = before + newLine + after;
-      el.selectionStart = el.selectionEnd = lineStart + newLine.length;
-      _prevVal = el.value;
-      return;
+  // ── 커서 위치를 textarea 뷰포트 안으로 스크롤 ──
+  // JS로 value를 직접 조작하면 브라우저가 scrollTop을 자동 갱신하지 않아
+  // 커서가 한 줄 위에 머무는 버그가 발생하므로 수동으로 보정한다.
+  // mirror div 방식: word-wrap된 실제 픽셀 높이를 반영하여 계산한다.
+  let _mirror = null;
+  function _getMirror(el) {
+    if (!_mirror) {
+      _mirror = document.createElement('div');
+      _mirror.style.cssText = [
+        'position:absolute', 'top:-9999px', 'left:-9999px',
+        'visibility:hidden', 'white-space:pre-wrap', 'word-wrap:break-word',
+        'overflow-wrap:break-word', 'border:0', 'margin:0'
+      ].join(';');
+      document.body.appendChild(_mirror);
     }
-
-    // 2. 줄바꿈 감지 → 번호 줄 다음에 다음 번호 삽입
-    const prevVal = _prevVal;
-    _prevVal = val;
-    if (val.length <= prevVal.length) return; // 삭제면 무시
-    const added = val.substring(prevVal.length);
-    if (!added.includes('\n')) return;
-
-    // 커서 이전 줄 (방금 엔터 친 줄)
-    const prevLineEnd = pos - 1;
-    const prevLineStart = val.lastIndexOf('\n', prevLineEnd - 1) + 1;
-    const prevLine = val.substring(prevLineStart, prevLineEnd);
-
-    const match = prevLine.match(/^( {4})(\d+)\. (.*)/);
-    if (!match) return;
-
-    const indent  = match[1];
-    const num     = parseInt(match[2]);
-    const content = match[3];
-
-    if (content === '') {
-      // 빈 번호 줄 → 번호 제거
-      const before = val.substring(0, prevLineStart);
-      const after  = val.substring(pos);
-      el.value = before + after;
-      el.selectionStart = el.selectionEnd = prevLineStart;
-    } else {
-      // 다음 번호 삽입
-      const nextPrefix = indent + (num + 1) + '. ';
-      const before = val.substring(0, pos);
-      const after  = val.substring(pos);
-      el.value = before + nextPrefix + after;
-      el.selectionStart = el.selectionEnd = pos + nextPrefix.length;
-    }
-    _prevVal = el.value;
-  });
-})();
-</script>
-
-
-<script>
-/* ── 날씨 표시 (Open-Meteo, 세종시 고정) ── */
-(function() {
-  const LAT = 36.48, LON = 127.29;
-  const WMO = {
-    0:'☀️',1:'🌤️',2:'⛅',3:'☁️',
-    45:'🌫️',48:'🌫️',
-    51:'🌧️',53:'🌧️',55:'🌧️',
-    61:'🌧️',63:'🌧️',65:'🌧️',
-    71:'❄️',73:'❄️',75:'❄️',77:'❄️',
-    80:'🌦️',81:'🌦️',82:'🌦️',
-    85:'🌨️',86:'🌨️',
-    95:'⛈️',96:'⛈️',99:'⛈️'
-  };
-  function wIcon(code) { return WMO[code] || '🌡️'; }
-
-  async function fetchWeather() {
-    try {
-      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + LAT +
-        '&longitude=' + LON +
-        '&daily=temperature_2m_max,temperature_2m_min,weathercode' +
-        '&timezone=Asia%2FSeoul&forecast_days=1';
-      const res = await fetch(url);
-      const data = await res.json();
-      const max  = Math.round(data.daily.temperature_2m_max[0]);
-      const min  = Math.round(data.daily.temperature_2m_min[0]);
-      const icon = wIcon(data.daily.weathercode[0]);
-      const el = document.getElementById('weather-display');
-      if (el) el.textContent = icon + ' ' + min + '°/' + max + '°';
-    } catch(e) {}
+    const s = window.getComputedStyle(el);
+    ['font-size','font-family','font-weight','line-height',
+     'padding-top','padding-bottom','padding-left','padding-right',
+     'border-top-width','border-bottom-width','box-sizing'].forEach(p => {
+      _mirror.style[p] = s[p];
+    });
+    _mirror.style.width = el.clientWidth + 'px';
+    return _mirror;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(fetchWeather, 1500);
+  function scrollCursorIntoView(el) {
+    const pos = el.selectionStart;
+    const textBefore = el.value.substring(0, pos);
+    const m = _getMirror(el);
+    // 커서 위치까지의 텍스트를 넣고 마커 span으로 Y값 측정
+    const escaped = textBefore.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n$/,'\n\u200b');
+    m.innerHTML = escaped + '<span id="_cur_marker">\u200b</span>';
+    const marker = m.querySelector('#_cur_marker');
+    if (!marker) return;
+    const mirrorRect = m.getBoundingClientRect();
+    const markerRect = marker.getBoundingClientRect();
+    const cursorY    = markerRect.top - mirrorRect.top;
+    const s          = window.getComputedStyle(el);
+    const lineHeight = parseFloat(s.lineHeight) || parseFloat(s.fontSize) * 1.5;
+    const visibleBottom = el.scrollTop + el.clientHeight;
+    if (cursorY + lineHeight > visibleBottom) {
+      el.scrollTop = cursorY + lineHeight - el.clientHeight + lineHeight;
+    } else if (cursorY < el.scrollTop) {
+      el.scrollTop = cursorY;
+    }
+  }
+
+  function handleSpace(preventFn) {
+    const start = ta.selectionStart;
+    const before = ta.value.substring(0, start);
+    const lines = before.split('\n');
+    const curLine = lines[lines.length - 1];
+    const numMatch = curLine.match(/^(\d+)\.$/);
+    if (numMatch && mode !== 'number') {
+      preventFn();
+      const lineStart = before.lastIndexOf('\n') + 1;
+      ta.value = ta.value.substring(0, lineStart) + numMatch[1] + '. ' + ZWS + ta.value.substring(start);
+      ta.selectionStart = ta.selectionEnd = lineStart + numMatch[1].length + 2 + 1;
+      mode = 'number';
+      scrollCursorIntoView(ta);
+      return true;
+    }
+    if (curLine === '*' && mode !== 'bullet') {
+      preventFn();
+      const lineStart = before.lastIndexOf('\n') + 1;
+      ta.value = ta.value.substring(0, lineStart) + '• ' + ta.value.substring(start);
+      ta.selectionStart = ta.selectionEnd = lineStart + 2;
+      mode = 'bullet';
+      scrollCursorIntoView(ta);
+      return true;
+    }
+    return false;
+  }
+
+  function handleEnter(preventFn, isShift) {
+    if (!mode) return false;
+    if (isShift) {
+      preventFn();
+      const start = ta.selectionStart;
+      const before = ta.value.substring(0, start);
+      const after = ta.value.substring(ta.selectionEnd);
+      ta.value = before + '\n' + after;
+      ta.selectionStart = ta.selectionEnd = start + 1;
+      scrollCursorIntoView(ta);
+      return true;
+    }
+    preventFn();
+    const start = ta.selectionStart;
+    const before = ta.value.substring(0, start);
+    const after = ta.value.substring(ta.selectionEnd);
+    const lines = before.split('\n');
+    const curLine = lines[lines.length - 1];
+    if (mode === 'bullet') {
+      if (curLine === '• ') {
+        ta.value = before.slice(0, -2) + '\n' + after;
+        ta.selectionStart = ta.selectionEnd = start - 2 + 1;
+        mode = null; return true;
+      }
+      const insert = '\n• ';
+      ta.value = before + insert + after;
+      ta.selectionStart = ta.selectionEnd = start + insert.length;
+    } else if (mode === 'number') {
+      const match = curLine.match(/^(\d+)\.\s/);
+      if (match && curLine.replace(/\u200b/g, '') === match[0]) {
+        // curLine 전체 길이(ZWS 포함)만큼 제거
+        const trim2 = before.slice(0, -curLine.length);
+        ta.value = trim2 + '\n' + after;
+        ta.selectionStart = ta.selectionEnd = trim2.length + 1;
+        mode = null; return true;
+      }
+      const nextNum = match ? parseInt(match[1]) + 1 : 1;
+      const insert = '\n' + nextNum + '. ' + ZWS;
+      const afterLines = after.split('\n');
+      let renumFrom = nextNum + 1;
+      let inSameBlock = true; // 같은 그룹 내에서만 재번호
+      const renumberedAfter = afterLines.map((line, idx) => {
+        if (idx === 0) return line;
+        const cleanLine = line.replace(/\u200b/g, '');
+        const lm = cleanLine.match(/^(\d+)(\.\s)/);
+        if (lm && inSameBlock) return renumFrom++ + lm[2] + line.slice(lm[0].length);
+        if (!lm) inSameBlock = false; // 빈 줄/일반 텍스트 → 그룹 끊김
+        return line;
+      }).join('\n');
+      ta.value = before + insert + renumberedAfter;
+      ta.selectionStart = ta.selectionEnd = start + insert.length;
+    }
+    scrollCursorIntoView(ta);
+    return true;
+  }
+
+  function renumberAll() {
+    const pos = ta.selectionStart;
+    const lines = ta.value.split('\n');
+    let inBlock = false, blockStart = 0, blockOffset = 0, changed = false;
+    const result = lines.map(line => {
+      // ZWS를 제거한 버전으로 번호 줄 판정
+      const cleanLine = line.replace(/\u200b/g, '');
+      const m = cleanLine.match(/^(\d+)(\.\s)([\s\S]*)$/);
+      if (m) {
+        if (!inBlock) { inBlock = true; blockStart = parseInt(m[1], 10); blockOffset = 0; }
+        const expected = blockStart + blockOffset++;
+        const oldPrefix = m[1] + m[2];           // 원래 prefix (ZWS 없는 버전)
+        const newPrefix = expected + m[2];        // 새 prefix
+        if (oldPrefix === newPrefix) return line; // prefix 변화 없으면 원본 그대로
+        // prefix만 교체하고 나머지(ZWS 포함 내용)는 원본에서 그대로 가져옴
+        const newLine = newPrefix + line.slice(oldPrefix.length);
+        changed = true;
+        return newLine;
+      } else { inBlock = false; return line; }
+    });
+    if (!changed) return;
+    const oldLines = lines, newLines = result;
+    let oldOffset = 0, newOffset = 0;
+    for (let i = 0; i < oldLines.length; i++) {
+      const oldEnd = oldOffset + oldLines[i].length + (i < oldLines.length - 1 ? 1 : 0);
+      const newEnd = newOffset + newLines[i].length + (i < newLines.length - 1 ? 1 : 0);
+      if (pos <= oldEnd) {
+        const posInLine = pos - oldOffset;
+        const om = oldLines[i].match(/^(\d+\.\s)/);
+        const nm = newLines[i].match(/^(\d+\.\s)/);
+        const diff = nm && om ? nm[1].length - om[1].length : 0;
+        const newPos = newOffset + Math.max(nm ? nm[1].length : 0, posInLine + diff);
+        ta.value = newLines.join('\n');
+        ta.selectionStart = ta.selectionEnd = newPos;
+        requestAnimationFrame(() => scrollCursorIntoView(ta));
+        return;
+      }
+      oldOffset = oldEnd; newOffset = newEnd;
+    }
+    ta.value = newLines.join('\n');
+    ta.selectionStart = ta.selectionEnd = pos;
+    requestAnimationFrame(() => scrollCursorIntoView(ta));
+  }
+
+  // PC: keydown
+  ta.addEventListener('keydown', function(e) {
+    let handled = false;
+    if (e.key === ' ') handled = handleSpace(() => e.preventDefault());
+    else if (e.key === 'Enter') handled = handleEnter(() => e.preventDefault(), e.shiftKey);
+    if (handled) requestAnimationFrame(() => scrollCursorIntoView(ta));
   });
+
+  // 모바일: beforeinput
+  ta.addEventListener('beforeinput', function(e) {
+    let handled = false;
+    if (e.inputType === 'insertText' && e.data === ' ')
+      handled = handleSpace(() => e.preventDefault());
+    else if (e.inputType === 'insertLineBreak' || (e.inputType === 'insertText' && e.data === '\n'))
+      handled = handleEnter(() => e.preventDefault(), false);
+    if (handled) requestAnimationFrame(() => scrollCursorIntoView(ta));
+  });
+
+  // input: 삭제 후 재번호 + 모드 리셋
+  // ※ renumberAll()이 value를 교체하면 scrollCursorIntoView는 renumberAll 내부에서
+  //   selectionStart 확정 후 한 번만 호출해야 한다. 여기서 추가 호출하면
+  //   word-wrap 미반영 계산으로 textarea가 위로 튀는 버그 발생.
+  // ※ mode가 null인 일반 타이핑은 브라우저가 scrollTop을 자동 처리하므로
+  //   JS에서 개입할 필요가 없다.
+  ta.addEventListener('input', function(e) {
+    if (ta.value === '') { mode = null; return; }
+    if (mode === 'number' && !e.isComposing) renumberAll();
+  });
+
+  // 저장 시 ZWS 자동 제거 (modal.js의 trySave가 .value를 읽기 전에)
+  const _origSave = window.trySave;
+  if (_origSave) {
+    window.trySave = function(...args) {
+      ta.value = ta.value.replace(/\u200b/g, '');
+      _origSave(...args);
+    };
+  }
+
+  // 모달 열릴 때마다 mode 리셋
+  const _origOpen = window.openEditModal;
+  if (_origOpen) {
+    window.openEditModal = function(todo) {
+      mode = null;
+      _origOpen(todo);
+      // 모달을 열 때마다 메모 textarea 스크롤을 항상 최상단으로 리셋
+      requestAnimationFrame(() => {
+        const ta = document.getElementById('input-memo');
+        if (ta) ta.scrollTop = 0;
+      });
+    };
+  }
+  const _origAdd = window.openAddModal;
+  if (_origAdd) {
+    window.openAddModal = function(...args) { mode = null; _origAdd(...args); };
+  }
 })();
 </script>
+
+
 </body>
 </html>
