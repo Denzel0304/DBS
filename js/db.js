@@ -1,18 +1,24 @@
 // =============================================
-// db.js — 로컬(IndexedDB) 전용 CRUD
-// 모든 데이터는 IDB에서 즉시 읽고/쓰기.
+// db.js — 로컬(IndexedDB) CRUD
+// 읽기/쓰기 모두 이 기기 IDB에서만 처리 (서버 없음)
 // =============================================
 
-// ── SELECT ──
+// ── SELECT (IDB에서 읽기) ──
 
 async function fetchTodosByDate(dateStr) {
   const all = await idbGetAll();
   return all
-    .filter(t => t.date === dateStr)
+    .filter(t => t.date === dateStr && !t.storage_flag)
     .sort((a, b) => {
       if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
       return (b.created_at || '') > (a.created_at || '') ? 1 : -1;
     });
+}
+
+// ── 창고 항목 조회 ──
+async function fetchStorageTodos() {
+  const all = await idbGetAll();
+  return all.filter(t => t.storage_flag === true);
 }
 
 async function fetchDotDatesForMonth(year, month) {
@@ -21,21 +27,23 @@ async function fetchDotDatesForMonth(year, month) {
   const to = `${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
   const all = await idbGetAll();
 
-  // 일반 행 (반복 마스터 제외)
+  // 일반 행 (반복 마스터 제외, 창고 항목 제외)
   const directDates = all
     .filter(t =>
       t.date >= from && t.date <= to &&
       !t.is_done &&
       !(t.repeat_deleted) &&
+      !t.storage_flag &&
       (!t.repeat_type || t.repeat_type === 'none' || t.repeat_exception === true)
     )
     .map(t => t.date);
 
-  // 반복 마스터 행 → 해당 월 날짜 중 매칭되는 날 계산
+  // 반복 마스터 행 → 해당 월 날짜 중 매칭되는 날 계산 (창고 제외)
   const repeatMasters = all.filter(t =>
     t.repeat_type && t.repeat_type !== 'none' &&
     !t.repeat_master_id &&
     !t.repeat_exception &&
+    !t.storage_flag &&
     t.date <= to
   );
 
@@ -77,21 +85,23 @@ async function fetchPastUndoneDatesForMonth(year, month) {
   const today = todayStr();
   const all = await idbGetAll();
 
-  // 일반 행: 과거 + 미완료
+  // 일반 행: 과거 + 미완료 (창고 제외)
   const directDates = all
     .filter(t =>
       t.date >= from && t.date < today && t.date <= to &&
       !t.is_done &&
       !(t.repeat_deleted) &&
+      !t.storage_flag &&
       (!t.repeat_type || t.repeat_type === 'none' || t.repeat_exception === true)
     )
     .map(t => t.date);
 
-  // 반복 마스터: 과거 날짜 중 미완료
+  // 반복 마스터: 과거 날짜 중 미완료 (창고 제외)
   const repeatMasters = all.filter(t =>
     t.repeat_type && t.repeat_type !== 'none' &&
     !t.repeat_master_id &&
     !t.repeat_exception &&
+    !t.storage_flag &&
     t.date <= to
   );
 
@@ -127,11 +137,36 @@ async function fetchPastUndoneDatesForMonth(year, month) {
 async function searchTodos(keyword) {
   const all = await idbGetAll();
   const kw = keyword.toLowerCase();
+
+  // 예외 행(repeat_exception=true)이 존재하는 반복 마스터 ID 세트
+  // → 해당 마스터는 검색 결과에서 제외하고 예외 행만 표시
+  const mastersWithException = new Set(
+    all
+      .filter(t => t.repeat_exception === true)
+      .map(t => String(t.repeat_master_id))
+  );
+
   return all
-    .filter(t =>
-      (t.title || '').toLowerCase().includes(kw) ||
-      (t.memo  || '').toLowerCase().includes(kw)
-    )
+    .filter(t => {
+      // 키워드 매칭
+      const matches =
+        (t.title || '').toLowerCase().includes(kw) ||
+        (t.memo  || '').toLowerCase().includes(kw);
+      if (!matches) return false;
+
+      // repeat_deleted 항목 제외
+      if (t.repeat_deleted) return false;
+
+      // 반복 마스터 행인데 예외 행이 이미 존재하면 제외
+      // (예외 행이 완료/수정된 실제 상태를 대표하므로 마스터는 숨김)
+      const isMaster =
+        t.repeat_type && t.repeat_type !== 'none' &&
+        !t.repeat_master_id &&
+        !t.repeat_exception;
+      if (isMaster && mastersWithException.has(String(t.id))) return false;
+
+      return true;
+    })
     .sort((a, b) => {
       if (a.date !== b.date) return b.date > a.date ? 1 : -1;
       return (b.created_at || '') > (a.created_at || '') ? 1 : -1;
@@ -141,13 +176,27 @@ async function searchTodos(keyword) {
 // ── INSERT ──
 
 async function insertTodo(data) {
-  const minOrder = AppState.todos.length > 0
-    ? Math.min(...AppState.todos.map(t => t.sort_order)) - 1
-    : 0;
+  const isStorage = !!data.storage_flag;
+
+  // 창고 항목은 창고 탭 내에서 정렬, 일반 할일은 기존 방식(AppState.todos 기준)
+  let minOrder;
+  if (isStorage) {
+    try {
+      const all = await idbGetAll();
+      const storageRows = all.filter(t => t.storage_flag === true);
+      minOrder = storageRows.length > 0
+        ? Math.min(...storageRows.map(t => t.sort_order || 0)) - 1
+        : 0;
+    } catch(e) { minOrder = 0; }
+  } else {
+    minOrder = AppState.todos.length > 0
+      ? Math.min(...AppState.todos.map(t => t.sort_order)) - 1
+      : 0;
+  }
 
   const now = new Date().toISOString();
-  const todo = {
-    id:               newId(),
+
+  const payload = {
     title:            data.title || '',
     memo:             data.memo  || '',
     importance:       data.importance ?? 0,
@@ -164,19 +213,28 @@ async function insertTodo(data) {
     repeat_master_id: null,
     repeat_exception: false,
     checklist:        data.checklist       || null,
+    time_at:          data.time_at         || null,
+    storage_flag:     isStorage,
     created_at:       now,
     updated_at:       now,
   };
 
-  await idbPut(todo);
-  return todo;
+  const localTodo = { ...payload, id: genId() };
+  await idbPut(localTodo);
+  return localTodo;
+}
+
+// 상기 사본 제목 괄호 안 표기: "10월 20일 15시" (시간 없으면 날짜만)
+function remindLabelWithTime(dateLabel, timeAt) {
+  const timeLabel = (timeAt && typeof formatTimeLabel === 'function') ? formatTimeLabel(timeAt) : '';
+  return [dateLabel, timeLabel].filter(Boolean).join(' ');
 }
 
 async function insertRemindCopy(original, remindDate, dateLabel) {
-  const titleSuffix = dateLabel ? `(${dateLabel})` : '';
+  const label = remindLabelWithTime(dateLabel, original && original.time_at);
+  const titleSuffix = label ? `(${label})` : '';
   const now = new Date().toISOString();
-  const todo = {
-    id:          newId(),
+  const payload = {
     title:       `🔔 ${original.title}${titleSuffix}`,
     memo:        original.memo || '',
     importance:  original.importance,
@@ -184,30 +242,97 @@ async function insertRemindCopy(original, remindDate, dateLabel) {
     remind_days: 0,
     is_done:     false,
     sort_order:  0,
-    weekly_flag: false,
-    repeat_type: 'none',
-    repeat_interval: 1,
-    repeat_day:  null,
-    repeat_end_date: null,
-    repeat_meta: null,
-    repeat_master_id: null,
-    repeat_exception: false,
-    checklist:   null,
+    remind_source_id: (original && original.id != null) ? String(original.id) : null,  // 원본 연결
     created_at:  now,
     updated_at:  now,
   };
 
-  await idbPut(todo);
-  return todo;
+  const localTodo = { ...payload, id: genId() };
+  await idbPut(localTodo);
+  return localTodo;
+}
+
+// ── 상기 사본 연동 ──
+// 원본(remind_days > 0)과 사본(remind_source_id = 원본 id)을 연결해서 관리한다.
+// 연결 정보가 없는 예전 사본은 대상이 아님.
+
+// 원본 id로 연결된 사본 찾기
+async function findRemindCopies(sourceId) {
+  if (sourceId == null) return [];
+  const sid = String(sourceId);
+  const all = await idbGetAll();
+  return all.filter(t => t.remind_source_id != null && String(t.remind_source_id) === sid);
+}
+
+// 원본에 연결된 사본 모두 삭제
+async function deleteRemindCopies(sourceId) {
+  const copies = await findRemindCopies(sourceId);
+  for (const c of copies) await deleteTodo(c.id);
+}
+
+// 원본 수정 후 사본 동기화
+//  before: 수정 전 원본, after: 수정 후 원본({...before, ...변경내용})
+//  - 상기 0 → N : 사본 생성
+//  - 상기 N → M, 날짜/제목/메모/중요도 변경 : 사본 갱신
+//  - 상기 → 0  : 사본 삭제
+async function syncRemindCopy(before, after) {
+  if (!before || before.id == null) return;
+  if (before.remind_source_id) return;            // 사본 자체는 대상 아님
+
+  const oldRemind = before.remind_days || 0;
+  const newRemind = after.storage_flag ? 0 : (after.remind_days || 0);
+  const copies = await findRemindCopies(before.id);
+
+  // 상기 해제 → 사본 삭제
+  if (newRemind <= 0) {
+    for (const c of copies) await deleteTodo(c.id);
+    return;
+  }
+
+  const remindDate = daysBeforeStr(after.date, newRemind);
+  const d = new Date(after.date + 'T00:00:00');
+  const dateLabel = `${d.getMonth()+1}월 ${d.getDate()}일`;
+
+  // 연결된 사본 없음 → 상기 숫자가 바뀐 경우에만 새로 생성
+  //   (숫자 변화 없이 사본이 없다면 사용자가 직접 지운 것이므로 다시 만들지 않음)
+  if (copies.length === 0) {
+    if (oldRemind !== newRemind) {
+      await insertRemindCopy({ ...after, id: before.id }, remindDate, dateLabel);
+    }
+    return;
+  }
+
+  const changed =
+    oldRemind !== newRemind ||
+    (before.date || '')  !== (after.date || '') ||
+    (before.title || '') !== (after.title || '') ||
+    (before.memo || '')  !== (after.memo || '') ||
+    (before.importance || 0) !== (after.importance || 0) ||
+    (before.time_at || null) !== (after.time_at || null);
+  if (!changed) return;
+
+  const [first, ...extra] = copies;
+  await updateTodo(first.id, {
+    title:      `🔔 ${after.title}(${remindLabelWithTime(dateLabel, after.time_at)})`,
+    memo:       after.memo || '',
+    importance: after.importance,
+    date:       remindDate,
+  });
+  // 혹시 중복 사본이 있으면 정리
+  for (const c of extra) await deleteTodo(c.id);
 }
 
 // ── UPDATE ──
 
 async function updateTodo(id, data) {
   const now = new Date().toISOString();
+  const patch = { ...data, updated_at: now };
+
+  // IDB 반영
   const existing = await idbGet(id);
-  if (!existing) return;
-  await idbPut({ ...existing, ...data, updated_at: now });
+  if (existing) {
+    await idbPut({ ...existing, ...patch });
+  }
 }
 
 async function toggleDone(id, isDone) {
@@ -218,7 +343,50 @@ async function toggleDone(id, isDone) {
 }
 
 async function moveTodoDate(id, newDate) {
-  return updateTodo(id, { date: newDate, sort_order: 0 });
+  let before = null;
+  try { before = await idbGet(id); } catch(e) {}
+  const result = await updateTodo(id, { date: newDate, sort_order: 0 });
+  // 상기 사본이 연결된 원본이면 사본 날짜도 함께 이동
+  if (before && (before.remind_days || 0) > 0) {
+    try { await syncRemindCopy(before, { ...before, date: newDate }); }
+    catch(e) { console.warn('[db] 상기 사본 이동 실패:', e); }
+  }
+  return result;
+}
+
+// ── 창고 항목을 일반 할일로 전환 ──
+// 방식: 기존 창고 row 완전 삭제 + 제목/중요도/메모만 복사해서 새 할일 insert
+// 이유: 찌꺼기 속성/참조가 남지 않고, insertTodo 경로를 그대로 타므로
+//       sort_order/created_at/updated_at 등 모든 필드가 신규 할일 기준으로 설정됨.
+async function convertStorageToTodo(storageId, newDate) {
+  // 1) 원본 데이터 복사 (IDB에서 조회)
+  const original = await idbGet(storageId);
+  if (!original) throw new Error('창고 항목을 찾을 수 없습니다');
+
+  // 2) 제목 / 중요도 / 메모만 승계. 나머지(주간/상기/반복/리스트 등)는 모두 기본값.
+  const newData = {
+    title:      original.title || '',
+    memo:       original.memo  || '',
+    importance: original.importance || 0,
+    date:       newDate,
+    // 아래는 명시적으로 기본값(찌꺼기 방지):
+    remind_days:  0,
+    weekly_flag:  false,
+    repeat_type:  'none',
+    repeat_interval: 1,
+    repeat_day:   null,
+    repeat_end_date: null,
+    repeat_meta:  null,
+    checklist:    null,
+    storage_flag: false,
+  };
+
+  // 3) 기존 창고 row 삭제
+  await deleteTodo(storageId);
+
+  // 4) 새 할일 insert (insertTodo가 알아서 새 id, sort_order, created_at 등 생성)
+  const newTodo = await insertTodo(newData);
+  return newTodo;
 }
 
 async function updateSortOrders(todos) {
@@ -240,7 +408,8 @@ async function fetchRepeatMasters(dateStr) {
       t.repeat_type && t.repeat_type !== 'none' &&
       t.date <= dateStr &&
       !t.repeat_master_id &&
-      !t.repeat_exception
+      !t.repeat_exception &&
+      !t.storage_flag
     );
   } catch(e) { return []; }
 }
@@ -252,25 +421,30 @@ async function fetchRepeatExceptions(dateStr) {
   } catch(e) { return []; }
 }
 
+// ── 반복 일정 삭제 3종 ──
+
 // ── 반복 마스터 완전 소멸 체크 후 삭제 ──
 // 유한 반복(repeat_end_date 있음)에서 모든 유효 날짜가 repeat_deleted 처리됐으면 마스터 삭제
 async function checkAndCleanMaster(masterId) {
   const all = await idbGetAll();
   const master = all.find(t => String(t.id) === String(masterId));
-  if (!master) return;
+  if (!master) return; // 이미 없음
 
   // 종료일 없는 무한 반복은 판단 불가 → 유지
   if (!master.repeat_end_date) return;
 
+  // 시작일부터 종료일까지 모든 매칭 날짜 계산
   const start = new Date(master.date + 'T00:00:00');
   const end   = new Date(master.repeat_end_date + 'T00:00:00');
 
+  // 삭제된 예외 날짜 세트
   const deletedDates = new Set(
     all
       .filter(t => String(t.repeat_master_id) === String(masterId) && t.repeat_deleted)
       .map(t => t.date)
   );
 
+  // 매칭 날짜 중 하나라도 삭제 안 된 게 있으면 유지
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const dateStr = toLocalDateStr(d);
     if (isRepeatMatch(master, dateStr) && !deletedDates.has(dateStr)) {
@@ -282,8 +456,6 @@ async function checkAndCleanMaster(masterId) {
   await deleteRepeatAll(masterId);
 }
 
-// ── 반복 일정 삭제 3종 ──
-
 // 1. 이 날짜만 삭제: repeat_deleted 예외 행 생성 후 마스터 소멸 체크
 async function deleteRepeatOnlyDate(masterId, dateStr) {
   const all = await idbGetAll();
@@ -294,10 +466,10 @@ async function deleteRepeatOnlyDate(masterId, dateStr) {
   if (existing) {
     await updateTodo(existing.id, { repeat_deleted: true });
   } else {
+    // 예외 행 새로 생성
     const master = all.find(t => String(t.id) === String(masterId));
     const now = new Date().toISOString();
-    const exception = {
-      id:               newId(),
+    const payload = {
       title:            master?.title || '',
       memo:             master?.memo  || '',
       importance:       master?.importance || 0,
@@ -305,20 +477,15 @@ async function deleteRepeatOnlyDate(masterId, dateStr) {
       remind_days:      0,
       is_done:          false,
       sort_order:       0,
-      weekly_flag:      false,
       repeat_type:      'none',
-      repeat_interval:  1,
-      repeat_day:       null,
-      repeat_end_date:  null,
-      repeat_meta:      null,
       repeat_master_id: masterId,
       repeat_exception: true,
       repeat_deleted:   true,
-      checklist:        null,
       created_at:       now,
       updated_at:       now,
     };
-    await idbPut(exception);
+
+    await idbPut({ ...payload, id: genId() });
   }
 
   // 유한 반복에서 모든 날짜 삭제됐으면 마스터도 삭제
@@ -355,6 +522,7 @@ async function deleteRepeatFromDate(masterId, dateStr) {
 
 // 3. 전체 삭제: 마스터 + 모든 예외 행
 async function deleteRepeatAll(masterId) {
+  // IDB에서 마스터 + 예외 행 모두 삭제
   const all = await idbGetAll();
   const toDeletes = all.filter(t =>
     String(t.id) === String(masterId) || String(t.repeat_master_id) === String(masterId)
@@ -363,14 +531,27 @@ async function deleteRepeatAll(masterId) {
 }
 
 async function insertRepeatException(masterId, dateStr, isDone = false) {
+  // 이미 같은 마스터+날짜 예외 행이 있으면 UPDATE, 없으면 INSERT
+  const all = await idbGetAll();
+  const existing = all.find(t =>
+    String(t.repeat_master_id) === String(masterId) &&
+    t.date === dateStr &&
+    t.repeat_exception === true
+  );
+
+  if (existing) {
+    // 이미 있으면 is_done만 UPDATE
+    await updateTodo(existing.id, { is_done: isDone, done_at: isDone ? new Date().toISOString() : null });
+    return existing;
+  }
+
   // 마스터 행은 AppState 또는 IDB에서 찾기
   let master = AppState.todos.find(t => t.id === masterId || t._masterId === masterId);
   if (!master) {
     try { master = await idbGet(masterId); } catch(e) {}
   }
   const now = new Date().toISOString();
-  const exception = {
-    id:               newId(),
+  const payload = {
     title:            master?.title || '',
     memo:             master?.memo  || '',
     importance:       master?.importance || 0,
@@ -382,18 +563,15 @@ async function insertRepeatException(masterId, dateStr, isDone = false) {
     done_at:          isDone ? now : null,
     sort_order:       0,
     repeat_type:      'none',
-    repeat_interval:  1,
-    repeat_day:       null,
-    repeat_end_date:  null,
-    repeat_meta:      null,
     repeat_master_id: masterId,
     repeat_exception: true,
     created_at:       now,
     updated_at:       now,
   };
 
-  await idbPut(exception);
-  return exception;
+  const localTodo = { ...payload, id: genId() };
+  await idbPut(localTodo);
+  return localTodo;
 }
 
 // ── 반복 수정 3종 ──
@@ -410,8 +588,7 @@ async function updateRepeatOnlyDate(masterId, dateStr, data) {
   } else {
     const master = all.find(t => String(t.id) === String(masterId));
     const now = new Date().toISOString();
-    const exception = {
-      id:               newId(),
+    const payload = {
       title:            data.title            ?? master?.title ?? '',
       memo:             data.memo             ?? master?.memo  ?? '',
       importance:       data.importance       ?? master?.importance ?? 0,
@@ -419,19 +596,17 @@ async function updateRepeatOnlyDate(masterId, dateStr, data) {
       checklist:        data.checklist        ?? master?.checklist ?? null,
       date:             dateStr,
       remind_days:      data.remind_days      ?? 0,
-      is_done:          false,
+      is_done:          data.is_done          ?? false,
+      done_at:          data.done_at          ?? null,
       sort_order:       0,
       repeat_type:      'none',
-      repeat_interval:  1,
-      repeat_day:       null,
-      repeat_end_date:  null,
-      repeat_meta:      null,
       repeat_master_id: masterId,
       repeat_exception: true,
       created_at:       now,
       updated_at:       now,
     };
-    await idbPut(exception);
+
+    await idbPut({ ...payload, id: genId() });
   }
 }
 
@@ -463,32 +638,33 @@ async function updateRepeatFromDate(masterId, dateStr, data) {
 
   // 새 마스터 행 생성
   const now = new Date().toISOString();
-  const newMaster = {
-    id:               newId(),
-    title:            data.title           ?? master.title,
-    memo:             data.memo            ?? master.memo ?? '',
-    importance:       data.importance      ?? master.importance ?? 0,
-    weekly_flag:      data.weekly_flag     ?? master.weekly_flag ?? false,
-    checklist:        data.checklist       ?? master.checklist ?? null,
-    date:             dateStr,
-    remind_days:      data.remind_days     ?? master.remind_days ?? 0,
-    is_done:          false,
-    sort_order:       master.sort_order ?? 0,
-    repeat_type:      data.repeat_type     ?? master.repeat_type,
-    repeat_interval:  data.repeat_interval ?? master.repeat_interval ?? 1,
-    repeat_day:       data.repeat_day      ?? master.repeat_day ?? null,
-    repeat_end_date:  data.repeat_end_date ?? master.repeat_end_date ?? null,
-    repeat_meta:      data.repeat_meta     ?? master.repeat_meta ?? null,
+  const newPayload = {
+    title:           data.title           ?? master.title,
+    memo:            data.memo            ?? master.memo ?? '',
+    importance:      data.importance      ?? master.importance ?? 0,
+    weekly_flag:     data.weekly_flag     ?? master.weekly_flag ?? false,
+    checklist:       data.checklist       ?? master.checklist ?? null,
+    date:            dateStr,
+    remind_days:     data.remind_days     ?? master.remind_days ?? 0,
+    is_done:         false,
+    sort_order:      master.sort_order ?? 0,
+    repeat_type:     data.repeat_type     ?? master.repeat_type,
+    repeat_interval: data.repeat_interval ?? master.repeat_interval ?? 1,
+    repeat_day:      data.repeat_day      ?? master.repeat_day ?? null,
+    repeat_end_date: data.repeat_end_date ?? master.repeat_end_date ?? null,
+    repeat_meta:     data.repeat_meta     ?? master.repeat_meta ?? null,
     repeat_master_id: null,
     repeat_exception: false,
-    created_at:       now,
-    updated_at:       now,
+    created_at:      now,
+    updated_at:      now,
   };
+
+  const newMaster = { ...newPayload, id: genId() };
   await idbPut(newMaster);
   return newMaster;
 }
 
-// 3. 전체 수정: 모든 예외 행 삭제 후 마스터 업데이트
+// 3. 전체 수정: 마스터 업데이트 + 모든 예외 행 삭제 후 재생성 없이 마스터만 업데이트
 async function updateRepeatAll(masterId, data) {
   const all = await idbGetAll();
 

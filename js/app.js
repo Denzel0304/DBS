@@ -1,29 +1,40 @@
 // =============================================
 // app.js — 앱 초기화 & 탭 전환
-// (로컬 전용: 로그인/세션 분기 없이 스플래시 → 앱 진입)
 // =============================================
 
 let currentTab = 'todo';
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // 로그인 없이 바로 앱 진입
   await showApp();
 });
 
 // 앱 전체 초기화
 async function bootApp() {
-  await initStorage();
+  await initLocalStore();
   initCalendar();
   initModal();
   initRepeat();
   initGesturePopup();
   initSearch();
   initWeekly();
+  initStorage();
   initSettings();
   initTabs();
   initTheme();
   initLightMode();
   loadTodos();
   initBackButton();
+
+  // ── 첫 접속 시 오늘의 시간 일정 팝업 ──
+  // 스플래시가 걷히기 전에 팝업을 미리 깔아둠 → 스플래시가 사라지면 바로 팝업이 보임
+  // (앱 새로 열기/새로고침 때만 실행. 날짜 이동·백그라운드 복귀 시에는 실행 안 됨)
+  try {
+    const timed = await buildTimedTodosForPopup();
+    showTimedTodosPopup(timed);
+  } catch(e) {
+    console.warn('[app] 시간 일정 팝업 실패', e);
+  }
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -32,46 +43,102 @@ async function bootApp() {
   });
 }
 
-// 스플래시 숨기고 앱 표시 (페이드 전환)
-async function showApp() {
-  const splash = document.getElementById('splash-screen');
-  const app    = document.getElementById('app');
+// ── 오늘의 시간 일정 조회 (팝업용) ──
+// 기기 데이터에서 "오늘 + 시간 있음 + 미완료"만 골라 시간순 정렬
+async function buildTimedTodosForPopup() {
+  const today = toLocalDateStr(new Date());
+  const isTimedUndone = t => t && t.time_at && !t.is_done && !t.storage_flag && t.date === today;
 
-  // 앱 먼저 준비 (숨긴 상태로)
-  app.style.display = '';
-  app.style.opacity = '0';
+  let localRows = [];
+  try {
+    localRows = await fetchTodosByDate(today);
+  } catch(e) {}
 
-  // 부트
-  await bootApp();
+  return localRows
+    .filter(isTimedUndone)
+    .sort((a, b) => (a.time_at < b.time_at ? -1 : a.time_at > b.time_at ? 1 : 0));
+}
 
-  // 스플래시 페이드아웃, 앱 페이드인
-  if (splash) { splash.style.transition = 'opacity 0.3s'; splash.style.opacity = '0'; }
-  app.style.transition = 'opacity 0.3s';
-  app.style.opacity = '1';
+// ── 오늘의 시간 일정 팝업 (상기용, 확인 버튼만) ──
+// 뒤 배경은 불투명 → 확인을 눌러야 할일 화면이 보임
+function showTimedTodosPopup(timed) {
+  try {
+    if (document.getElementById('timed-todos-overlay')) return;
+    if (!timed || timed.length === 0) return;   // 시간 일정 없으면 띄우지 않음
 
-  setTimeout(() => {
-    if (splash) splash.style.display = 'none';
-    app.style.transition = '';
-    app.style.opacity = '';
-  }, 320);
+    const overlay = document.createElement('div');
+    overlay.id = 'timed-todos-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg-base);z-index:1300;' +
+      'display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-elevated);border-radius:16px;padding:24px 22px 20px;' +
+      'width:320px;max-width:calc(100vw - 40px);max-height:80vh;display:flex;flex-direction:column;gap:16px;' +
+      'box-shadow:0 8px 32px rgba(0,0,0,0.5);border:1px solid var(--border-light);font-family:var(--font-main);';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:16px;font-weight:600;color:var(--text-primary);text-align:center;';
+    title.textContent = '🕒 오늘의 시간 일정';
+
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:8px;overflow-y:auto;';
+    timed.forEach(t => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;gap:8px;align-items:baseline;padding:10px 12px;border-radius:10px;' +
+        'background:var(--bg-surface);font-size:14px;color:var(--text-primary);line-height:1.4;';
+      const tm = document.createElement('span');
+      tm.style.cssText = 'color:var(--accent);font-weight:600;white-space:nowrap;font-family:var(--font-ui);';
+      tm.textContent = `[${formatTimeLabel(t.time_at)}]`;
+      const tt = document.createElement('span');
+      tt.style.cssText = 'word-break:break-all;';
+      tt.textContent = t.title || '';
+      row.appendChild(tm);
+      row.appendChild(tt);
+      list.appendChild(row);
+    });
+
+    const okBtn = document.createElement('button');
+    okBtn.style.cssText = 'width:100%;padding:12px;border-radius:10px;border:none;background:var(--accent);' +
+      'color:#1a1a2e;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;flex-shrink:0;';
+    okBtn.textContent = '확인';
+    okBtn.addEventListener('click', closeTimedTodosPopup);
+
+    box.appendChild(title);
+    box.appendChild(list);
+    box.appendChild(okBtn);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  } catch(e) {
+    console.warn('[app] 시간 일정 팝업 실패', e);
+  }
+}
+
+function closeTimedTodosPopup() {
+  document.getElementById('timed-todos-overlay')?.remove();
 }
 
 // ── 라이트 모드 토글 ──
 function initLightMode() {
   applyLogoMode();
   document.getElementById('lightmode-toggle').addEventListener('click', () => {
-    // 컬러 테마 활성 시 토글 무시
-    if (document.body.classList.contains('theme-active')) return;
-    const isLight = document.body.classList.toggle('light-mode');
-    localStorage.setItem('lightmode', isLight ? '1' : '0');
-    localStorage.setItem('app-theme', isLight ? 'light' : 'dark');
-    applyLogoMode();
+    // 어떤 테마에서든 토글 → 다크 모드 / 다크 모드에서 토글 → 직전 테마로 복귀
+    const current = localStorage.getItem(APP_NS + 'app-theme') || (localStorage.getItem(APP_NS + 'lightmode') === '1' ? 'light' : 'dark');
+    if (current === 'dark') {
+      let prev = localStorage.getItem(APP_NS + 'app-theme-prev') || 'light';
+      // 삭제된 테마가 직전 테마로 남아있는 경우 대체 테마로 변환, 다크로 이어지면 라이트로
+      if (typeof LEGACY_THEMES !== 'undefined' && LEGACY_THEMES[prev]) prev = LEGACY_THEMES[prev];
+      if (prev === 'dark') prev = 'light';
+      applyTheme(prev);
+    } else {
+      applyTheme('dark');
+    }
   });
 }
 
 function applyLogoMode() {
-  const isLight = document.body.classList.contains('light-mode');
-  const src = isLight ? 'logo1.png' : 'logo.png';
+  // 투명 배경 로고 하나로 통일 (배경색은 테마별 CSS가 처리)
+  const src = 'logo2.png';
+  // 스플래시 로고 교체
   const splashLogo = document.getElementById('splash-logo');
   if (splashLogo) splashLogo.src = src;
 }
@@ -85,55 +152,65 @@ function initBackButton() {
     if (e.state && e.state.page === 'base') {
       if (hasOpenPopup()) {
         closeTopPopup();
-        history.pushState({ page: 'app' }, '');
+        // ── 핵심 ──
+        // 이 환경에선 '뒤로가기의 결과로 호출된 pushState'가 새 항목을 쌓지 않고
+        // 현재 base 항목을 덮어써 버려, 다음 뒤로가기에서 앱을 탈출하는 버그가 있음.
+        // 새 항목을 만드는 대신, 방금 뒤로가기로 떠나온 'app' 항목이 forward 쪽에
+        // 그대로 남아있으므로 그 항목으로 도로 forward → base 바닥을 그대로 보존.
+        history.forward();
       } else if (currentTab !== 'todo') {
         switchTab('todo');
-        history.pushState({ page: 'app' }, '');
+        history.forward();
       }
     }
   });
 }
 
 function hasOpenPopup() {
+  if (document.getElementById('timed-todos-overlay')) return true;
+  if (document.getElementById('habits-modal-overlay')) return true;
+  if (document.getElementById('dday-modal-overlay')) return true;
+  if (document.getElementById('bucket-modal-overlay')) return true;
   if (document.getElementById('theme-sheet')) return true;
   if (document.getElementById('stats-overlay')) return true;
+  // ── 창고 탭 전용 팝업들 (storage.js가 동적 생성) ──
+  if (document.getElementById('storage-action-popup')) return true;
+  if (document.getElementById('storage-date-picker-popup')) return true;
+  if (document.getElementById('storage-pc-dropdown')) return true;
   if (!document.getElementById('repeat-overlay').classList.contains('hidden')) return true;
   if (!document.getElementById('action-popup').classList.contains('hidden')) return true;
   if (!document.getElementById('year-popup').classList.contains('hidden')) return true;
   if (!document.getElementById('month-popup').classList.contains('hidden')) return true;
   if (!document.getElementById('modal-overlay').classList.contains('hidden')) return true;
   if (!document.getElementById('checklist-overlay').classList.contains('hidden')) return true;
+  if (!document.getElementById('time-overlay').classList.contains('hidden')) return true;
   if (!document.getElementById('repeat-edit-overlay').classList.contains('hidden')) return true;
-  const importConfirm = document.getElementById('import-confirm-modal');
-  if (importConfirm && !importConfirm.classList.contains('hidden')) return true;
-  const importError = document.getElementById('import-error-modal');
-  if (importError && !importError.classList.contains('hidden')) return true;
   if (document.getElementById('repeats-panel').classList.contains('open')) return true;
   if (document.getElementById('settings-panel').classList.contains('open')) return true;
-  const devNote = document.getElementById('dev-note-modal');
-  if (devNote && !devNote.classList.contains('hidden')) return true;
   return false;
 }
 
 function closeTopPopup() {
-  // import 모달은 다른 모달들 위에 떠 있으므로 가장 먼저 처리
-  const importError = document.getElementById('import-error-modal');
-  if (importError && !importError.classList.contains('hidden')) {
-    importError.classList.add('hidden');
+  // 시간 일정 팝업: 뒤로가기 = 확인과 동일
+  if (document.getElementById('timed-todos-overlay')) { closeTimedTodosPopup(); return; }
+  const habitsOverlay = document.getElementById('habits-modal-overlay');
+  if (habitsOverlay) {
+    if (typeof closeHabitsModal === 'function') closeHabitsModal();
+    else habitsOverlay.remove();
     return;
   }
-  const devNote = document.getElementById('dev-note-modal');
-  if (devNote && !devNote.classList.contains('hidden')) {
-    devNote.classList.add('hidden');
+  const ddayOverlay = document.getElementById('dday-modal-overlay');
+  if (ddayOverlay) {
+    if (typeof closeDdayModal === 'function') closeDdayModal();
+    else ddayOverlay.remove();
     return;
   }
-  const importConfirm = document.getElementById('import-confirm-modal');
-  if (importConfirm && !importConfirm.classList.contains('hidden')) {
-    if (typeof cancelImport === 'function') cancelImport();
-    else importConfirm.classList.add('hidden');
+  const bucketOverlay = document.getElementById('bucket-modal-overlay');
+  if (bucketOverlay) {
+    if (typeof closeBucketModal === 'function') closeBucketModal();
+    else bucketOverlay.remove();
     return;
   }
-
   const statsOverlay = document.getElementById('stats-overlay');
   if (statsOverlay) { statsOverlay.remove(); return; }
   const themeSheet = document.getElementById('theme-sheet');
@@ -142,7 +219,28 @@ function closeTopPopup() {
     document.getElementById('theme-sheet-overlay')?.remove();
     return;
   }
+  // ── 창고 날짜 선택 달력 (액션 시트보다 위층이므로 먼저 닫기) ──
+  const storageDatePicker = document.getElementById('storage-date-picker-popup');
+  if (storageDatePicker) {
+    storageDatePicker.remove();
+    document.getElementById('storage-date-picker-backdrop')?.remove();
+    return;
+  }
+  // ── 창고 액션 시트(모바일) / PC 드롭다운 ──
+  const storageActionPopup = document.getElementById('storage-action-popup');
+  if (storageActionPopup) {
+    if (typeof closeStorageAction === 'function') closeStorageAction();
+    else storageActionPopup.remove();
+    return;
+  }
+  const storagePcDropdown = document.getElementById('storage-pc-dropdown');
+  if (storagePcDropdown) {
+    if (typeof closeStorageAction === 'function') closeStorageAction();
+    else storagePcDropdown.remove();
+    return;
+  }
   if (!document.getElementById('checklist-overlay').classList.contains('hidden')) { closeChecklistModal(false); return; }
+  if (!document.getElementById('time-overlay').classList.contains('hidden')) { closeTimeModal(false); return; }
   if (!document.getElementById('repeat-edit-overlay').classList.contains('hidden')) { closeRepeatEditOverlay(); return; }
   if (!document.getElementById('repeat-overlay').classList.contains('hidden')) { document.getElementById('repeat-overlay').classList.add('hidden'); return; }
   if (!document.getElementById('action-popup').classList.contains('hidden')) { closeActionPopup(); return; }
@@ -171,10 +269,12 @@ function switchTab(tabName) {
   });
   if (tabName === 'todo')        { loadTodos(); updateMonthDots(); }
   else if (tabName === 'weekly') { weekOffset = 0; loadWeekly(); }
+  else if (tabName === 'storage'){ loadStorage(); }
   else if (tabName === 'search') { setTimeout(() => document.getElementById('search-input').focus(), 200); }
 }
 
 function refreshCurrentTab() {
   if (currentTab === 'todo')        { loadTodos(); updateMonthDots(); }
   else if (currentTab === 'weekly') { loadWeekly(); }
+  else if (currentTab === 'storage'){ loadStorage(); }
 }

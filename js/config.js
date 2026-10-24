@@ -1,49 +1,37 @@
 // =============================================
-// config.js — 전역 상태 & 공통 유틸
-// (로컬 전용: 인증/Supabase 관련 로직 모두 제거)
+// config.js — 앱 전용 이름공간 & 전역 상태
 // =============================================
 
-// ── 날짜 유틸 ──
-function toLocalDateStr(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+// 이 앱 전용 저장 이름 접두어
+// IndexedDB 이름, localStorage 키 등 이 앱이 저장하는 모든 이름 앞에 붙음
+// → 같은 주소(도메인)의 다른 앱과 저장 공간이 절대 겹치지 않음
+const APP_NS = 'zq7k39xr_';
+
+// 스플래시 숨기고 앱 표시 (페이드 전환)
+async function showApp() {
+  const splash = document.getElementById('splash-screen');
+  const app    = document.getElementById('app');
+
+  // 앱 먼저 준비 (숨긴 상태로)
+  app.style.display = '';
+  app.style.opacity = '0';
+
+  // bootApp 실행
+  await bootApp();
+
+  // 스플래시 페이드아웃, 앱 페이드인
+  if (splash) { splash.style.transition = 'opacity 0.3s'; splash.style.opacity = '0'; }
+  app.style.transition = 'opacity 0.3s';
+  app.style.opacity = '1';
+
+  setTimeout(() => {
+    if (splash) splash.style.display = 'none';
+    app.style.transition = '';
+    app.style.opacity = '';
+  }, 320);
 }
 
-function todayStr() { return toLocalDateStr(new Date()); }
-
-function tomorrowStr() {
-  const d = new Date(); d.setDate(d.getDate() + 1); return toLocalDateStr(d);
-}
-
-function daysBeforeStr(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() - n); return toLocalDateStr(d);
-}
-
-// ── UUID 생성 (모든 신규 행의 id) ──
-function newId() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  // 매우 오래된 브라우저용 fallback
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
-
-// ── 토스트 ──
-function showToast(msg, duration = 2000) {
-  let el = document.getElementById('toast');
-  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), duration);
-}
-
-// ── 전역 앱 상태 ──
+// 전역 앱 상태
 const AppState = {
   selectedDate: toLocalDateStr(new Date()),
   calYear:  new Date().getFullYear(),
@@ -53,3 +41,28 @@ const AppState = {
   pastUndoneDates: new Set(),
   editingId: null,
 };
+
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function todayStr()    { return toLocalDateStr(new Date()); }
+
+function tomorrowStr() {
+  const d = new Date(); d.setDate(d.getDate() + 1); return toLocalDateStr(d);
+}
+
+function daysBeforeStr(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() - n); return toLocalDateStr(d);
+}
+
+function showToast(msg, duration = 2000) {
+  let el = document.getElementById('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), duration);
+}
